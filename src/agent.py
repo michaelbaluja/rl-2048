@@ -6,14 +6,16 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from env import Env2048
-from net import ValueNet
+from net import ValueNet, Transition, ReplayMemory
 
 
 class Agent():
     def __init__(self):
         self.model = ValueNet(input_size=16*16*4)
         self.criterion = nn.L1Loss()
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.alpha, momentum=self.momentum) 
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.alpha, momentum=self.momentum)
+        self.batch_size = 128
+        self.memory = ReplayMemory(10000)
 
     def run(self):
         raise NotImplementedError
@@ -197,41 +199,61 @@ class AgentSARSA(Agent):
         max_pieces = []
         learning_reward = []
         env = Env2048()
+        learning_state = np.array([[0, 0, 0, 0], [0, 2, 0, 0], [0, 0, 0, 2], [128, 128, 8, 4]])
         
         for cycle in tqdm(range(epoch)):
             state = env.state.copy()
             action = self.policy(state)
-            learning_state = np.array([[0, 0, 0, 0], [0, 2, 0, 0], [0, 0, 0, 2], [128, 128, 8, 4]])
             
             while env.can_move(state):
+                # Take action A, ovserve R, S'
                 state_prime, reward = env.step(state, action)
-                if not env.can_move(state_prime):
-                    one_hot = self.make_one_hot(state, action)
-                    value_estimate = self.model(one_hot)
-                    est_return = torch.FloatTensor([reward])
-                    
-                    loss = self.criterion(value_estimate, est_return)
-                    loss.backward()
-                    self.optimizer.step()
-                    break
-                    
+                
+                # Select next action epsilon-greedily
                 action_prime = self.policy(state_prime)
+                
+                # Add information to memory
                 one_hot_s = self.make_one_hot(state, action)
                 one_hot_s_prime = self.make_one_hot(state_prime, action_prime)
-                value_estimate = self.model(one_hot_s)
-                est_return = torch.FloatTensor([reward + self.model(one_hot_s_prime)])
-                
-                loss = self.criterion(value_estimate, est_return)
-                loss.backward()
-                self.optimizer.step()
-                state = state_prime
-                action = action_prime
+                reward = torch.FloatTensor([reward])
+                self.memory.push(one_hot_s, action, one_hot_s_prime, reward)
+                    
+                if len(self.memory) >= self.batch_size:
+                    # Get batch info
+                    transitions = self.memory.sample(self.batch_size)
+                    batch = Transition(*zip(*transitions))
+                    
+                    state_batch = torch.cat(batch.state).reshape([self.batch_size, 1024])
+                    reward_batch = torch.cat(batch.reward)
+                    next_state_batch = torch.cat(batch.next_state).reshape([self.batch_size, 1024])
+                    
+                    state_action_values = self.model(state_batch)
+                    expected_state_action_values = reward_batch + self.model(next_state_batch)
+                    
+                    # If S' terminal, update different
+                    if not env.can_move(state_prime):
+                        value_estimate = self.model(one_hot_s)
+                        est_return = torch.FloatTensor([reward])
+
+                        loss = self.criterion(value_estimate, est_return)
+                        loss.backward()
+                        self.optimizer.step()
+                        break
+
+                    # Compute loss, perform gradient descent step
+                    loss = self.criterion(state_action_values, expected_state_action_values)
+                    loss.backward()
+                    self.optimizer.step()
+                    state = state_prime
+                    action = action_prime
             
             if cycle % 10 == 0:
-                with torch.no_grad():
-                    learning_action = self.policy(learning_state)
-                    reward = self.model(self.make_one_hot(learning_state, learning_action))
-                    learning_reward.append(reward)
+                learning_action = self.policy(learning_state)
+                reward = self.model(self.make_one_hot(learning_state, learning_action))
+                learning_reward.append(reward.detach().numpy())
+                loss = self.criterion(reward, torch.FloatTensor([256]))
+                loss.backward()
+                self.optimizer.step()
                     
             if self.epsilon > 0.01:
                 self.epsilon *= self.decay_rate
