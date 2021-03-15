@@ -45,10 +45,11 @@ class Agent():
         return action
 
 class AgentMC(Agent):
-    def __init__(self, alpha, epsilon, momentum=0):
+    def __init__(self, alpha, epsilon, decay_rate=0.9, momentum=0):
         self.alpha = alpha
         self.epsilon = epsilon
-        self.momentum=momentum
+        self.decay_rate = decay_rate
+        self.momentum = momentum
         super(AgentMC, self).__init__()
 
     def make_trajectory(self, s, env):
@@ -116,7 +117,7 @@ class AgentMC(Agent):
                     learning_reward.append(reward)
                     
             if self.epsilon > 0.01:
-                self.epsilon *= 0.99
+                self.epsilon *= self.decay_rate
             
         return max_pieces, learning_reward, lengths
 
@@ -177,9 +178,10 @@ class AgentTD(Agent):
 
     
 class AgentSARSA(Agent):
-    def __init__(self, alpha, epsilon, momentum=0):
+    def __init__(self, alpha, epsilon, decay_rate=0.9, momentum=0):
         self.alpha = alpha
         self.epsilon = epsilon
+        self.decay_rate = decay_rate
         self.momentum = momentum
         super(AgentSARSA, self).__init__()
     
@@ -220,6 +222,8 @@ class AgentSARSA(Agent):
                 est_return = torch.FloatTensor([reward + self.model(one_hot_s_prime)])
                 
                 loss = self.criterion(value_estimate, est_return)
+                loss.backward()
+                self.optimizer.step()
                 state = state_prime
                 action = action_prime
             
@@ -230,7 +234,7 @@ class AgentSARSA(Agent):
                     learning_reward.append(reward)
                     
             if self.epsilon > 0.01:
-                self.epsilon *= 0.99
+                self.epsilon *= self.decay_rate
             
             max_pieces.append(np.max(state))
                 
