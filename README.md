@@ -11,8 +11,8 @@ git clone https://github.com/michaelbaluja/rl-2048.git
 ## Running
 To run the code for this repository, the `main.ipynb` notebook has been added with all necessary imports to run. 
 1. Open the `main.ipynb` notebook 
-2. Run the import and hyperparameter cell
+2. Run the import cell
 3. (Optionally) Run the warning ignore cell
-4. Run the relevant algorithm cells (Monte Carlo/SARSA) 
+4. Run the relevant algorithm chunks (Monte Carlo/SARSA) 
 
-Each cell fully contains the required calls to create and run the agent (except for the previously noted hyperparameters), and plot output. Note that the default calls to the output plotting function saves each plot. This can be turned off by removing the `save_file='...'` parameter to the plotter function in each cell.
+Each chunk fully contains the required calls to create and run the agent and plot output. Note that the default calls to the output plotting function saves each plot. This can be turned off by removing the `save_file='...'` parameter to the plotter function in each cell.
