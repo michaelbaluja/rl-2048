@@ -3,7 +3,7 @@ import copy
 
 class Env2048():
     def __init__(self):
-        pass
+        self.state = np.array([[0,0,0,0], [0,0,0,0], [0,0,0,0], [2,2,0,0]])
 
     def num_free_pos(self, s):
         '''Gives the number of "free" positions (0-valued environment positions) on the game board'''
@@ -21,6 +21,19 @@ class Env2048():
 
         return s
 
+    def can_move(self, s):
+        '''Given a state, returns boolean for capability to continue making actions'''
+        rows, cols = s.shape
+        pos_changes = [(-1,0), (1,0), (0,-1), (0,1)] # Up, Down, Left, Right
+
+        for row in range(rows):
+            for col in range(cols):
+                for row_delta, col_delta in pos_changes:
+                    if row + row_delta in range(0, rows) and col + col_delta in range(0, cols):
+                        if s[row, col] == s[row + row_delta, col + col_delta]:
+                            return True
+
+        return False
 
     def move(self, s, a):
         '''Moves state based on action'''
