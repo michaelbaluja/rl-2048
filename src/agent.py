@@ -15,7 +15,7 @@ class Agent():
         self.model = ValueNet(input_size=16*16*4).to(self.device)
         self.criterion = nn.L1Loss()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.alpha, momentum=self.momentum)
-        self.batch_size = 128
+        self.batch_size = 256
         self.memory = ReplayMemory(10000)
 
     def run(self):
@@ -91,7 +91,7 @@ class AgentMC(Agent):
             state = env.state
             trajectory, rewards = self.make_trajectory(state, env)
             lengths.append(len(trajectory))
-            learning_state = np.array([[0, 0, 0, 0], [0, 2, 0, 0], [0, 0, 0, 2], [128, 128, 8, 4]])
+            learning_state = np.array([[0, 0, 0, 0], [0, 2, 0, 0], [0, 0, 0, 2], [1024, 1024, 8, 4]])
 
             # Create G
             G = np.zeros(len(trajectory))
@@ -99,19 +99,19 @@ class AgentMC(Agent):
             for t in range(len(trajectory) - 2, -1, -1):
                 G[t] = 0.6 * G[t + 1] + rewards[t]
 
-            # Make one hots of trajectory
-            one_hots = torch.cat([self.make_one_hot(s, a) for (s,a) in trajectory]).reshape([len(trajectory), 1024])
+            one_hots = torch.cat([self.make_one_hot(s, a) for (s,a) in trajectory]).reshape([len(trajectory),1024])
             value_estimate = self.model(one_hots)
             est_return = torch.FloatTensor([G[t] for t in range(len(trajectory))]).to(self.device)
 
-            # Calculate loss, propogate backward
             loss = self.criterion(value_estimate, est_return)
             episode_loss.append(loss.item())
             loss.backward()
             self.optimizer.step()
             
+            
+            
             losses.append(np.mean(episode_loss))
-            max_pieces.append(np.max(state[-1][0]))
+            max_pieces.append(np.max(trajectory[-1][0]))
             
             if cycle % 10 == 0:
                 with torch.no_grad():
@@ -229,7 +229,7 @@ class AgentSARSA(Agent):
                     next_state_batch = torch.cat(batch.next_state).reshape([self.batch_size, 1024]).to(self.device)
                     
                     state_action_values = self.model(state_batch)
-                    expected_state_action_values = 0.8 * reward_batch + self.model(next_state_batch)
+                    expected_state_action_values = reward_batch + 0.85 * self.model(next_state_batch)
                     
                     # If S' terminal, update different
                     if not env.can_move(state_prime):
@@ -249,12 +249,10 @@ class AgentSARSA(Agent):
                     action = action_prime
             
             if cycle % 10 == 0:
-                learning_action = self.policy(learning_state)
-                reward = self.model(self.make_one_hot(learning_state, learning_action))
-                learning_reward.append(reward)
-                #loss = self.criterion(reward, torch.FloatTensor([256]))
-                #loss.backward()
-                #self.optimizer.step()
+                with torch.no_grad():
+                    learning_action = self.policy(learning_state)
+                    reward = self.model(self.make_one_hot(learning_state, learning_action))
+                    learning_reward.append(reward)
                     
             if self.epsilon > 0.01:
                 self.epsilon *= self.decay_rate
